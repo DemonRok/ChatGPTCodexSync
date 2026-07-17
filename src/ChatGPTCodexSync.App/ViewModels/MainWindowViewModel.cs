@@ -46,8 +46,11 @@ public sealed class MainWindowViewModel : ViewModelBase
       .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
       .InformationalVersion;
 
-    return string.IsNullOrWhiteSpace(informationalVersion)
-      ? "0.0.0"
-      : informationalVersion;
+    if (string.IsNullOrWhiteSpace(informationalVersion))
+    {
+      return "0.0.0";
+    }
+
+    return informationalVersion.Split('+')[0];
   }
 }
