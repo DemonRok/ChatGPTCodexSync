@@ -20,9 +20,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     var currentProfile = codexProfileLocator.GetCurrentProfile();
     _codexDirectoryPath = currentProfile.CodexDirectoryPath;
     _windowTitle = $"ChatGPTCodexSync ver. {GetApplicationVersion()}";
-    _statusMessage = "Pronto per la configurazione delle prossime fasi.";
+    _statusMessage = "Ready for the next implementation phases.";
 
-    _logger.LogInformation("Profilo Codex corrente individuato: {CodexDirectoryPath}", _codexDirectoryPath);
+    _logger.LogInformation("Current Codex profile located: {CodexDirectoryPath}", _codexDirectoryPath);
   }
 
   public string CodexDirectoryPath

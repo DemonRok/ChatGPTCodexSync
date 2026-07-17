@@ -39,7 +39,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Text="Fase 1: struttura applicativa, configurazione e servizi base."
+                <TextBlock Text="Phase 1: application structure, configuration, and base services."
                            FontSize="16"
                            FontWeight="SemiBold" />
 
@@ -66,7 +66,7 @@
                     MinWidth="110"
                     Margin="0,0,10,0"
                     IsEnabled="False" />
-            <Button Content="Ripristino"
+            <Button Content="Restore"
                     MinWidth="110"
                     IsEnabled="False" />
         </StackPanel>
