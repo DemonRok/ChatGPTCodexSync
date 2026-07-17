@@ -1,11 +1,13 @@
 using ChatGPTCodexSync.Core.Services;
 using Microsoft.Extensions.Logging;
+using System.Reflection;
 
 namespace ChatGPTCodexSync.App.ViewModels;
 
 public sealed class MainWindowViewModel : ViewModelBase
 {
   private readonly ILogger<MainWindowViewModel> _logger;
+  private readonly string _windowTitle;
   private string _statusMessage;
   private string _codexDirectoryPath;
 
@@ -17,6 +19,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     var currentProfile = codexProfileLocator.GetCurrentProfile();
     _codexDirectoryPath = currentProfile.CodexDirectoryPath;
+    _windowTitle = $"ChatGPTCodexSync ver. {GetApplicationVersion()}";
     _statusMessage = "Pronto per la configurazione delle prossime fasi.";
 
     _logger.LogInformation("Profilo Codex corrente individuato: {CodexDirectoryPath}", _codexDirectoryPath);
@@ -28,9 +31,23 @@ public sealed class MainWindowViewModel : ViewModelBase
     private set => SetProperty(ref _codexDirectoryPath, value);
   }
 
+  public string WindowTitle => _windowTitle;
+
   public string StatusMessage
   {
     get => _statusMessage;
     private set => SetProperty(ref _statusMessage, value);
+  }
+
+  private static string GetApplicationVersion()
+  {
+    var assembly = Assembly.GetEntryAssembly() ?? typeof(MainWindowViewModel).Assembly;
+    var informationalVersion = assembly
+      .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+      .InformationalVersion;
+
+    return string.IsNullOrWhiteSpace(informationalVersion)
+      ? "0.0.0"
+      : informationalVersion;
   }
 }

@@ -44,7 +44,7 @@ public partial class App : Application
     catch (Exception exception)
     {
       MessageBox.Show(
-        exception.Message,
+        GetExceptionDetails(exception),
         "Errore avvio ChatGPTCodexSync",
         MessageBoxButton.OK,
         MessageBoxImage.Error);
@@ -61,5 +61,19 @@ public partial class App : Application
     _host.Dispose();
 
     base.OnExit(e);
+  }
+
+  private static string GetExceptionDetails(Exception exception)
+  {
+    var messages = new List<string>();
+    var currentException = exception;
+
+    while (currentException is not null)
+    {
+      messages.Add(currentException.Message);
+      currentException = currentException.InnerException;
+    }
+
+    return string.Join(Environment.NewLine, messages);
   }
 }

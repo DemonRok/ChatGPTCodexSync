@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versione da pubblicare, ad esempio 0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Windows release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+            $tag = "v$version"
+          } else {
+            $tag = "${{ github.ref_name }}"
+            $version = $tag.TrimStart("v")
+          }
+
+          $assemblyVersion = if ($version.Split(".").Length -eq 3) { "$version.0" } else { $version }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "assembly_version=$assemblyVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore ChatGPTCodexSync.sln
+
+      - name: Build
+        run: >
+          dotnet build ChatGPTCodexSync.sln
+          --configuration Release
+          --no-restore
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:AssemblyVersion=${{ steps.version.outputs.assembly_version }}
+          -p:FileVersion=${{ steps.version.outputs.assembly_version }}
+          -p:InformationalVersion=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test ChatGPTCodexSync.sln --configuration Release --no-build
+
+      - name: Publish portable app
+        run: >
+          dotnet publish src\ChatGPTCodexSync.App\ChatGPTCodexSync.App.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --output artifacts\publish
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:AssemblyVersion=${{ steps.version.outputs.assembly_version }}
+          -p:FileVersion=${{ steps.version.outputs.assembly_version }}
+          -p:InformationalVersion=${{ steps.version.outputs.version }}
+
+      - name: Create archive
+        shell: pwsh
+        run: |
+          $archive = "artifacts\ChatGPTCodexSync-${{ steps.version.outputs.tag }}-win-x64.zip"
+          Compress-Archive -Path "artifacts\publish\*" -DestinationPath $archive -Force
+          "archive=$archive" >> $env:GITHUB_ENV
+
+      - name: Create or update GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $title = "ChatGPTCodexSync $tag"
+          $notes = "Release automatica di ChatGPTCodexSync per Windows x64."
+
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $env:archive --clobber
+          } else {
+            gh release create $tag $env:archive --title $title --notes $notes
+          }
