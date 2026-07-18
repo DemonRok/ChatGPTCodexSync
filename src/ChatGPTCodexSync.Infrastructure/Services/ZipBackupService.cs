@@ -123,8 +123,9 @@ internal sealed class ZipBackupService(
       progress.Report(new BackupProgress($"Adding .codex directory to 7z archive using {request.SevenZipCompressionMode} mode...", 5));
       if (request.SevenZipCompressionMode == SevenZipCompressionMode.Maximum)
       {
-        progress.Report(new BackupProgress("Maximum mode uses stronger compression and may take longer.", 5));
+        progress.Report(new BackupProgress("Maximum mode uses SaveCodex.cmd-compatible compression switches.", 5));
       }
+      progress.Report(new BackupProgress($"7-Zip switches: {string.Join(' ', compressionSwitches.Where(static value => value != "-y"))}", 5));
 
       var lastReportedPercent = -1;
       var highestSevenZipPercent = -1;
@@ -171,31 +172,33 @@ internal sealed class ZipBackupService(
     {
       SevenZipCompressionMode.Fast =>
       [
-        "-mx=0",
-        "-mmt=on",
-        "-ms=off",
+        "-mx=1",
+        GetArchitectureAwareThreadSwitch(),
         "-y"
       ],
       SevenZipCompressionMode.Balanced =>
       [
-        "-m0=LZMA2",
-        "-mx=1",
-        "-mmt=on",
-        "-md=32m",
-        "-ms=off",
+        "-mx=5",
+        GetArchitectureAwareThreadSwitch(),
         "-y"
       ],
       SevenZipCompressionMode.Maximum =>
       [
-        "-m0=LZMA2",
-        "-mx=7",
-        "-mmt=on",
-        "-md=512m",
-        "-ms=on",
+        "-mx=9",
+        GetArchitectureAwareThreadSwitch(),
         "-y"
       ],
       _ => throw new ArgumentOutOfRangeException(nameof(compressionMode), compressionMode, null)
     };
+  }
+
+  private static string GetArchitectureAwareThreadSwitch()
+  {
+    var threadCount = Environment.Is64BitProcess
+      ? Environment.ProcessorCount
+      : Math.Min(Environment.ProcessorCount, 2);
+
+    return $"-mmt={threadCount}";
   }
 
   private void CreateZipArchive(
