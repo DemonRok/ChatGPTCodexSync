@@ -120,12 +120,12 @@ internal sealed class ZipBackupService(
         ?? throw new DirectoryNotFoundException($"Unable to locate parent directory for {request.CodexDirectoryPath}");
       var codexDirectoryName = Path.GetFileName(request.CodexDirectoryPath);
 
-      progress.Report(new BackupProgress($"Adding .codex directory to 7z archive using {request.SevenZipCompressionMode} mode...", 5));
+      progress.Report(new BackupProgress($"Adding .codex directory to 7z archive using {request.SevenZipCompressionMode} mode...", 0));
       if (request.SevenZipCompressionMode == SevenZipCompressionMode.Maximum)
       {
-        progress.Report(new BackupProgress("Maximum mode uses SaveCodex.cmd-compatible compression switches.", 5));
+        progress.Report(new BackupProgress("Maximum mode uses SaveCodex.cmd-compatible compression switches.", 0));
       }
-      progress.Report(new BackupProgress($"7-Zip switches: {string.Join(' ', compressionSwitches.Where(static value => value != "-y"))}", 5));
+      progress.Report(new BackupProgress($"7-Zip switches: {string.Join(' ', compressionSwitches.Where(static value => value != "-y"))}", 0));
 
       var lastReportedPercent = -1;
       var highestSevenZipPercent = -1;
@@ -149,7 +149,7 @@ internal sealed class ZipBackupService(
           }
 
           highestSevenZipPercent = sevenZipPercent;
-          var mappedPercent = 5 + (int)Math.Round(sevenZipPercent * 0.95d);
+          var mappedPercent = (int)Math.Round((double)sevenZipPercent);
           if (mappedPercent != lastReportedPercent)
           {
             lastReportedPercent = mappedPercent;

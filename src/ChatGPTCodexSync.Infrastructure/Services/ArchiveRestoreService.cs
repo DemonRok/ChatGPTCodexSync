@@ -35,17 +35,25 @@ internal sealed class ArchiveRestoreService(
       Path.GetTempPath(),
       $"ChatGPTCodexSync-restore-{Guid.NewGuid():N}");
 
-    progress.Report(new BackupProgress("Extracting backup archive to a temporary directory...", 10));
+    progress.Report(new BackupProgress("Extracting backup archive to a temporary directory...", 0));
+    progress.Report(new BackupProgress($"Archive path: {request.ArchivePath}", null, OperationLogLevel.Diagnostic));
+    progress.Report(new BackupProgress($"Temporary extract directory: {tempExtractDirectory}", null, OperationLogLevel.Diagnostic));
+    progress.Report(new BackupProgress($"Target .codex directory: {request.TargetCodexDirectoryPath}", null, OperationLogLevel.Diagnostic));
+    progress.Report(new BackupProgress($"Safety backups directory: {request.SafetyBackupsDirectoryPath}", null, OperationLogLevel.Diagnostic));
     Directory.CreateDirectory(tempExtractDirectory);
 
     string? safetyBackupDirectory = null;
     try
     {
+      var extractionStartedAt = Stopwatch.StartNew();
       await ExtractArchiveAsync(request, tempExtractDirectory, progress, cancellationToken);
+      progress.Report(new BackupProgress($"Archive extraction completed in {extractionStartedAt.Elapsed:mm\\:ss}.", null, OperationLogLevel.Detailed));
 
       progress.Report(new BackupProgress("Reading backup manifest...", 45));
       var manifest = await ReadManifestAsync(tempExtractDirectory, cancellationToken);
       ValidateManifest(manifest);
+      progress.Report(new BackupProgress($"Manifest source profile: {manifest.UserProfilePath}", null, OperationLogLevel.Detailed));
+      progress.Report(new BackupProgress($"Manifest archive format: {manifest.ArchiveFormat}", null, OperationLogLevel.Detailed));
 
       var extractedCodexDirectory = Path.Combine(tempExtractDirectory, options.Value.CodexDirectoryName);
       if (!Directory.Exists(extractedCodexDirectory))
@@ -59,21 +67,27 @@ internal sealed class ArchiveRestoreService(
       {
         progress.Report(new BackupProgress("Creating safety backup of the current .codex directory...", 60));
         safetyBackupDirectory = CreateSafetyBackupPath(request.SafetyBackupsDirectoryPath);
+        var safetyBackupStartedAt = Stopwatch.StartNew();
         await MoveDirectoryAsync(
           request.TargetCodexDirectoryPath,
           safetyBackupDirectory,
-          percent => progress.Report(new BackupProgress("Creating safety backup of the current .codex directory...", 60 + percent * 0.15d)),
+          percent => progress.Report(new BackupProgress($"Creating safety backup of the current .codex directory: {percent:0}%.", 60 + percent * 0.15d, OperationLogLevel.Detailed)),
+          progress,
           cancellationToken);
+        progress.Report(new BackupProgress($"Safety backup completed in {safetyBackupStartedAt.Elapsed:mm\\:ss}.", null, OperationLogLevel.Detailed));
       }
 
       try
       {
         progress.Report(new BackupProgress("Restoring .codex directory...", 80));
+        var restoreMoveStartedAt = Stopwatch.StartNew();
         await MoveDirectoryAsync(
           extractedCodexDirectory,
           request.TargetCodexDirectoryPath,
-          percent => progress.Report(new BackupProgress("Restoring .codex directory...", 80 + percent * 0.15d)),
+          percent => progress.Report(new BackupProgress($"Restoring .codex directory: {percent:0}%.", 80 + percent * 0.15d, OperationLogLevel.Detailed)),
+          progress,
           cancellationToken);
+        progress.Report(new BackupProgress($"Restore directory move completed in {restoreMoveStartedAt.Elapsed:mm\\:ss}.", null, OperationLogLevel.Detailed));
       }
       catch
       {
@@ -110,7 +124,11 @@ internal sealed class ArchiveRestoreService(
     if (extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
     {
       await Task.Run(
-        () => ZipFile.ExtractToDirectory(request.ArchivePath, destinationDirectory, overwriteFiles: true),
+        () =>
+        {
+          progress.Report(new BackupProgress("Extracting ZIP archive with .NET runtime.", null, OperationLogLevel.Detailed));
+          ZipFile.ExtractToDirectory(request.ArchivePath, destinationDirectory, overwriteFiles: true);
+        },
         cancellationToken);
       return;
     }
@@ -126,7 +144,8 @@ internal sealed class ArchiveRestoreService(
       await RunSevenZipAsync(
         sevenZipTool.ExecutablePath,
         ["x", "-bsp1", request.ArchivePath, $"-o{destinationDirectory}", "-y"],
-        percent => progress.Report(new BackupProgress("Extracting backup archive with 7-Zip...", 10 + percent * 0.35d)),
+        percent => progress.Report(new BackupProgress($"Extracting backup archive with 7-Zip: {percent:0}%.", percent * 0.45d, OperationLogLevel.Detailed)),
+        progress,
         cancellationToken);
       return;
     }
@@ -176,17 +195,18 @@ internal sealed class ArchiveRestoreService(
       return;
     }
 
-    await MoveDirectoryAsync(safetyBackupDirectoryPath, targetCodexDirectoryPath, null, cancellationToken);
+    await MoveDirectoryAsync(safetyBackupDirectoryPath, targetCodexDirectoryPath, null, null, cancellationToken);
   }
 
   private static Task MoveDirectoryAsync(
     string sourceDirectoryPath,
     string destinationDirectoryPath,
     Action<double>? progressChanged,
+    IProgress<BackupProgress>? progress,
     CancellationToken cancellationToken)
   {
     return Task.Run(
-      () => MoveDirectory(sourceDirectoryPath, destinationDirectoryPath, progressChanged, cancellationToken),
+      () => MoveDirectory(sourceDirectoryPath, destinationDirectoryPath, progressChanged, progress, cancellationToken),
       cancellationToken);
   }
 
@@ -194,21 +214,30 @@ internal sealed class ArchiveRestoreService(
     string sourceDirectoryPath,
     string destinationDirectoryPath,
     Action<double>? progressChanged,
+    IProgress<BackupProgress>? progress,
     CancellationToken cancellationToken)
   {
     Directory.CreateDirectory(Path.GetDirectoryName(destinationDirectoryPath)!);
 
+    progress?.Report(new BackupProgress($"Move source: {sourceDirectoryPath}", null, OperationLogLevel.Diagnostic));
+    progress?.Report(new BackupProgress($"Move destination: {destinationDirectoryPath}", null, OperationLogLevel.Diagnostic));
+
     if (AreSameVolume(sourceDirectoryPath, destinationDirectoryPath))
     {
+      progress?.Report(new BackupProgress("Source and destination are on the same volume. Using directory move.", null, OperationLogLevel.Detailed));
       Directory.Move(sourceDirectoryPath, destinationDirectoryPath);
       return;
     }
+
+    progress?.Report(new BackupProgress("Source and destination are on different volumes. Using copy and delete.", null, OperationLogLevel.Detailed));
 
     var files = Directory
       .EnumerateFiles(sourceDirectoryPath, "*", SearchOption.AllDirectories)
       .ToList();
 
+    progress?.Report(new BackupProgress($"Files to copy: {files.Count}", null, OperationLogLevel.Diagnostic));
     CopyDirectory(sourceDirectoryPath, destinationDirectoryPath, files.Count, progressChanged, cancellationToken);
+    progress?.Report(new BackupProgress("Copied directory tree. Removing original directory tree.", null, OperationLogLevel.Detailed));
     DeleteDirectoryTree(sourceDirectoryPath, cancellationToken);
   }
 
@@ -299,6 +328,7 @@ internal sealed class ArchiveRestoreService(
     string executablePath,
     IReadOnlyList<string> arguments,
     Action<double>? progressChanged,
+    IProgress<BackupProgress>? progress,
     CancellationToken cancellationToken)
   {
     var startInfo = new ProcessStartInfo
@@ -315,6 +345,8 @@ internal sealed class ArchiveRestoreService(
       startInfo.ArgumentList.Add(argument);
     }
 
+    progress?.Report(new BackupProgress($"7-Zip command: \"{executablePath}\" {string.Join(' ', arguments.Select(QuoteArgument))}", null, OperationLogLevel.Diagnostic));
+
     using var process = Process.Start(startInfo)
       ?? throw new InvalidOperationException($"Unable to start {executablePath}.");
 
@@ -330,6 +362,11 @@ internal sealed class ArchiveRestoreService(
     {
       throw new InvalidOperationException($"7-Zip extraction failed with exit code {process.ExitCode}.{Environment.NewLine}{outputBuilder}{Environment.NewLine}{errorBuilder}");
     }
+  }
+
+  private static string QuoteArgument(string argument)
+  {
+    return argument.Contains(' ', StringComparison.Ordinal) ? $"\"{argument}\"" : argument;
   }
 
   private static async Task ReadProcessOutputAsync(

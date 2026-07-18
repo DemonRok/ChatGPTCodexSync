@@ -1,3 +1,6 @@
 namespace ChatGPTCodexSync.Core.Backup;
 
-public sealed record BackupProgress(string Message, double? Percent = null);
+public sealed record BackupProgress(
+  string Message,
+  double? Percent = null,
+  OperationLogLevel Level = OperationLogLevel.Normal);

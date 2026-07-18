@@ -25,6 +25,7 @@ public sealed class MainWindowViewModel : ViewModelBase
   private string _progressText;
   private string? _lastLogMessage;
   private SevenZipCompressionMode _selectedCompressionMode = SevenZipCompressionMode.Fast;
+  private OperationLogLevel _selectedLogLevel = OperationLogLevel.Normal;
   private bool _offlineMode;
   private string _statusMessage;
   private string _codexDirectoryPath;
@@ -67,6 +68,13 @@ public sealed class MainWindowViewModel : ViewModelBase
 
   public ICommand RestoreCommand { get; }
 
+  public IReadOnlyList<OperationLogLevel> LogLevels { get; } =
+  [
+    OperationLogLevel.Normal,
+    OperationLogLevel.Detailed,
+    OperationLogLevel.Diagnostic
+  ];
+
   public IReadOnlyList<SevenZipCompressionMode> CompressionModes { get; } =
   [
     SevenZipCompressionMode.Fast,
@@ -78,6 +86,12 @@ public sealed class MainWindowViewModel : ViewModelBase
   {
     get => _selectedCompressionMode;
     set => SetProperty(ref _selectedCompressionMode, value);
+  }
+
+  public OperationLogLevel SelectedLogLevel
+  {
+    get => _selectedLogLevel;
+    set => SetProperty(ref _selectedLogLevel, value);
   }
 
   public bool OfflineMode
@@ -150,7 +164,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
       var progress = new Progress<BackupProgress>(backupProgress =>
       {
-        AppendLog(backupProgress.Message);
+        AppendLog(backupProgress);
 
         if (backupProgress.Percent.HasValue)
         {
@@ -207,7 +221,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
       var progress = new Progress<BackupProgress>(restoreProgress =>
       {
-        AppendLog(restoreProgress.Message);
+        AppendLog(restoreProgress);
 
         if (restoreProgress.Percent.HasValue)
         {
@@ -248,13 +262,29 @@ public sealed class MainWindowViewModel : ViewModelBase
 
   private void AppendLog(string message)
   {
+    AppendLog(new BackupProgress(message));
+  }
+
+  private void AppendLog(BackupProgress progress)
+  {
+    if (progress.Level > SelectedLogLevel)
+    {
+      return;
+    }
+
+    AppendLogLine(progress.Message, progress.Level);
+  }
+
+  private void AppendLogLine(string message, OperationLogLevel level)
+  {
     if (string.Equals(_lastLogMessage, message, StringComparison.Ordinal))
     {
       return;
     }
 
     _lastLogMessage = message;
-    var logLine = $"[{DateTime.Now:HH:mm:ss}] {message}";
+    var levelText = level == OperationLogLevel.Normal ? string.Empty : $" [{level}]";
+    var logLine = $"[{DateTime.Now:HH:mm:ss}]{levelText} {message}";
     _log.AppendLine(logLine);
     AppendLineToLogFile(logLine);
     LogText = _log.ToString();
