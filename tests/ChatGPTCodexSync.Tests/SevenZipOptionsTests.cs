@@ -14,6 +14,8 @@ public sealed class SevenZipOptionsTests
     Assert.Equal("tools", options.ToolsDirectoryName);
     Assert.Equal("7zip", options.SevenZipToolDirectoryName);
     Assert.Equal("26.02", options.Minimum7ZipVersion);
+    Assert.Equal("https://www.7-zip.org/a/7z2602-x64.exe", options.SevenZipFullDownloadUrl);
+    Assert.Equal("https://www.7-zip.org/a/7z2602-extra.7z", options.SevenZipExtraDownloadUrl);
     Assert.Equal("https://www.7-zip.org/a/7zr.exe", options.SevenZipDownloadUrl);
   }
 }

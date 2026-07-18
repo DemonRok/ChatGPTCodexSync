@@ -190,7 +190,7 @@ internal sealed class ZipBackupService(
         "-m0=LZMA2",
         "-mx=7",
         "-mmt=on",
-        "-md=64m",
+        "-md=512m",
         "-ms=on",
         "-y"
       ],

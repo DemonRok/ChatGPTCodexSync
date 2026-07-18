@@ -18,5 +18,9 @@ public sealed class CodexSyncOptions
 
   public string Minimum7ZipVersion { get; set; } = "26.02";
 
+  public string SevenZipFullDownloadUrl { get; set; } = "https://www.7-zip.org/a/7z2602-x64.exe";
+
+  public string SevenZipExtraDownloadUrl { get; set; } = "https://www.7-zip.org/a/7z2602-extra.7z";
+
   public string SevenZipDownloadUrl { get; set; } = "https://www.7-zip.org/a/7zr.exe";
 }
