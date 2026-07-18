@@ -51,8 +51,8 @@ Release titles and notes must be written in English and should describe the actu
 Example:
 
 ```text
-git tag v0.1.11
-git push origin v0.1.11
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 The workflow builds, tests, publishes the self-contained Windows x64 application, and attaches a ZIP archive to the GitHub Release.
