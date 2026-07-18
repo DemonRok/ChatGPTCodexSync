@@ -23,6 +23,7 @@ Completed so far:
 - Backup manifest validation during restore.
 - Temporary extraction before touching the current profile.
 - Safety backup creation before replacing the current `.codex` directory.
+- Persistent operation logs written to the executable `Logs` directory.
 - Real-time log output, progress percentage, and auto-scrolling log view.
 - GitHub Actions workflow for Windows x64 release builds.
 - Initial automated tests.
@@ -51,8 +52,8 @@ Release titles and notes must be written in English and should describe the actu
 Example:
 
 ```text
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 The workflow builds, tests, publishes the self-contained Windows x64 application, and attaches a ZIP archive to the GitHub Release.

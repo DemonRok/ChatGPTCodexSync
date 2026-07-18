@@ -18,6 +18,8 @@ public sealed class MainWindowViewModel : ViewModelBase
   private readonly IRestoreService _restoreService;
   private readonly ICodexProfileLocator _codexProfileLocator;
   private readonly StringBuilder _log = new();
+  private readonly object _logFileLock = new();
+  private readonly string _logFilePath;
   private bool _isOperationRunning;
   private double _progressValue;
   private string _progressText;
@@ -38,6 +40,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     _backupService = backupService;
     _restoreService = restoreService;
     _codexProfileLocator = codexProfileLocator;
+    _logFilePath = CreateLogFilePath();
 
     var currentProfile = codexProfileLocator.GetCurrentProfile();
     _codexDirectoryPath = currentProfile.CodexDirectoryPath;
@@ -47,6 +50,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     _logText = "Backup and restore logs will appear here.";
     CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync);
     RestoreCommand = new AsyncRelayCommand(RestoreAsync);
+    WriteLogFileHeader();
 
     _logger.LogInformation("Current Codex profile located: {CodexDirectoryPath}", _codexDirectoryPath);
   }
@@ -163,6 +167,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
       StatusMessage = "Backup failed.";
       AppendLog(exception.Message);
+      AppendExceptionToLogFile(exception);
       _logger.LogError(exception, "Backup failed");
     }
     finally
@@ -224,6 +229,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
       StatusMessage = "Restore failed.";
       AppendLog(exception.Message);
+      AppendExceptionToLogFile(exception);
       _logger.LogError(exception, "Restore failed");
     }
     finally
@@ -248,8 +254,49 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     _lastLogMessage = message;
-    _log.AppendLine($"[{DateTime.Now:HH:mm:ss}] {message}");
+    var logLine = $"[{DateTime.Now:HH:mm:ss}] {message}";
+    _log.AppendLine(logLine);
+    AppendLineToLogFile(logLine);
     LogText = _log.ToString();
+  }
+
+  private static string CreateLogFilePath()
+  {
+    var logsDirectory = Path.Combine(AppContext.BaseDirectory, "Logs");
+    Directory.CreateDirectory(logsDirectory);
+
+    return Path.Combine(logsDirectory, $"chatgptcodexsync_{DateTime.Now:yyyyMMdd-HHmmss}.log");
+  }
+
+  private void WriteLogFileHeader()
+  {
+    AppendLineToLogFile($"ChatGPTCodexSync {GetApplicationVersion()}");
+    AppendLineToLogFile($"Started: {DateTimeOffset.Now:O}");
+    AppendLineToLogFile($"Log file: {_logFilePath}");
+    AppendLineToLogFile(string.Empty);
+  }
+
+  private void AppendExceptionToLogFile(Exception exception)
+  {
+    AppendLineToLogFile("Exception details:");
+    AppendLineToLogFile(exception.ToString());
+  }
+
+  private void AppendLineToLogFile(string line)
+  {
+    try
+    {
+      lock (_logFileLock)
+      {
+        File.AppendAllText(_logFilePath, line + Environment.NewLine, Encoding.UTF8);
+      }
+    }
+    catch (IOException)
+    {
+    }
+    catch (UnauthorizedAccessException)
+    {
+    }
   }
 
   private static string GetApplicationVersion()

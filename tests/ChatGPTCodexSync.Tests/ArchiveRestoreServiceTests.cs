@@ -30,7 +30,7 @@ public sealed class ArchiveRestoreServiceTests
 
       var manifest = new BackupManifest(
         "ChatGPTCodexSync",
-        "0.2.0",
+        "0.2.1",
         "TEST-PC",
         "mauro",
         @"C:\Users\mauro",
