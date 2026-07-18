@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ChatGPTCodexSync.Core\ChatGPTCodexSync.Core.csproj" />
+    <ProjectReference Include="..\..\src\ChatGPTCodexSync.Infrastructure\ChatGPTCodexSync.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

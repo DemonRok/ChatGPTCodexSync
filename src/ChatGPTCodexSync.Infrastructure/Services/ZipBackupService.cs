@@ -33,6 +33,8 @@ internal sealed class ZipBackupService(
     var manifest = CreateManifest(request);
     var archivePath = CreateArchivePath(request.BackupsDirectoryPath, manifest);
 
+    await WaitForDatabaseFilesAsync(request.CodexDirectoryPath, progress, cancellationToken);
+
     progress.Report(new BackupProgress("Creating backup archive...", 0));
     logger.LogInformation("Creating backup archive {ArchivePath}", archivePath);
 
@@ -99,6 +101,80 @@ internal sealed class ZipBackupService(
         lastReportedPercent = percent;
         progress.Report(new BackupProgress($"Archived {index + 1} of {files.Count} files.", percent));
       }
+    }
+  }
+
+  private static async Task WaitForDatabaseFilesAsync(
+    string codexDirectoryPath,
+    IProgress<BackupProgress> progress,
+    CancellationToken cancellationToken)
+  {
+    var sensitiveFiles = Directory
+      .EnumerateFiles(codexDirectoryPath, "*", SearchOption.AllDirectories)
+      .Where(IsDatabaseRelatedFile)
+      .ToList();
+
+    if (sensitiveFiles.Count == 0)
+    {
+      progress.Report(new BackupProgress("No SQLite files found to check.", 0));
+      return;
+    }
+
+    progress.Report(new BackupProgress($"Checking {sensitiveFiles.Count} SQLite-related files...", 0));
+
+    var timeoutAt = DateTimeOffset.UtcNow.AddSeconds(30);
+    while (DateTimeOffset.UtcNow < timeoutAt)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+
+      var lockedFiles = sensitiveFiles
+        .Where(file => !CanOpenForBackup(file))
+        .ToList();
+
+      if (lockedFiles.Count == 0)
+      {
+        progress.Report(new BackupProgress("SQLite files are ready for backup.", 0));
+        return;
+      }
+
+      progress.Report(new BackupProgress($"Waiting for {lockedFiles.Count} SQLite-related files to be released...", 0));
+      await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+    }
+
+    throw new IOException("Some SQLite-related files are still locked. Close ChatGPT Desktop and try again.");
+  }
+
+  private static bool IsDatabaseRelatedFile(string filePath)
+  {
+    var fileName = Path.GetFileName(filePath);
+    var extension = Path.GetExtension(filePath);
+
+    return extension.Equals(".db", StringComparison.OrdinalIgnoreCase)
+      || extension.Equals(".sqlite", StringComparison.OrdinalIgnoreCase)
+      || extension.Equals(".sqlite3", StringComparison.OrdinalIgnoreCase)
+      || fileName.EndsWith("-wal", StringComparison.OrdinalIgnoreCase)
+      || fileName.EndsWith("-shm", StringComparison.OrdinalIgnoreCase);
+  }
+
+  private static bool CanOpenForBackup(string filePath)
+  {
+    try
+    {
+      using var stream = new FileStream(
+        filePath,
+        FileMode.Open,
+        FileAccess.Read,
+        FileShare.ReadWrite | FileShare.Delete);
+
+      return stream.CanRead;
+    }
+    catch (IOException)
+    {
+      return false;
+    }
+    catch (UnauthorizedAccessException)
+    {
+      return false;
     }
   }
 
