@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Versione da pubblicare, ad esempio 0.1.0"
+        description: "Version to publish, for example 0.1.10"
         required: true
         type: string
 
@@ -87,8 +87,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
-          $title = "ChatGPTCodexSync $tag"
-          $notes = "Release automatica di ChatGPTCodexSync per Windows x64."
+          $title = "ChatGPTCodexSync $tag - Faster 7-Zip backup profiles"
+          $notes = @"
+          Improves 7-Zip backup performance by aligning the Fast, Balanced, and Maximum compression profiles with the proven SaveCodex.cmd-style settings.
+
+          Changes:
+          - Fast, Balanced, and Maximum now use simple 7-Zip compression levels instead of custom method, dictionary, and solid archive settings.
+          - Compression uses architecture-aware multithreading.
+          - Portable full 7-Zip support remains available, with reduced 7zr kept only as a bootstrap/fallback tool.
+          "@
 
           gh release view $tag 2>$null
           if ($LASTEXITCODE -eq 0) {
