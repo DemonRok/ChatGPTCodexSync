@@ -10,4 +10,9 @@ public partial class MainWindow : Window
     InitializeComponent();
     DataContext = viewModel;
   }
+
+  private void LogTextBoxTextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+  {
+    LogTextBox.ScrollToEnd();
+  }
 }

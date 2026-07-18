@@ -39,23 +39,25 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Text="Phase 1: application structure, configuration, and base services."
+                <TextBlock Text="{Binding StatusMessage}"
                            FontSize="16"
                            FontWeight="SemiBold" />
 
                 <TextBox Grid.Row="1"
+                         x:Name="LogTextBox"
                          Margin="0,16"
                          IsReadOnly="True"
                          TextWrapping="Wrap"
                          VerticalScrollBarVisibility="Auto"
-                         Text="{Binding StatusMessage, Mode=OneWay}" />
+                         TextChanged="LogTextBoxTextChanged"
+                         Text="{Binding LogText, Mode=OneWay}" />
 
                 <ProgressBar Grid.Row="2"
                              Height="8"
                              IsIndeterminate="False"
                              Minimum="0"
                              Maximum="100"
-                             Value="0" />
+                             Value="{Binding ProgressValue, Mode=OneWay}" />
             </Grid>
         </Border>
 
@@ -65,7 +67,7 @@
             <Button Content="Backup"
                     MinWidth="110"
                     Margin="0,0,10,0"
-                    IsEnabled="False" />
+                    Command="{Binding CreateBackupCommand}" />
             <Button Content="Restore"
                     MinWidth="110"
                     IsEnabled="False" />
