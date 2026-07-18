@@ -15,6 +15,7 @@ public static class DependencyInjection
     services.Configure<CodexSyncOptions>(configuration.GetSection("CodexSync"));
     services.AddSingleton<ICodexProfileLocator, CodexProfileLocator>();
     services.AddSingleton<IChatGptProcessDetector, ChatGptProcessDetector>();
+    services.AddSingleton<ISevenZipToolProvider, SevenZipToolProvider>();
     services.AddSingleton<IBackupService, ZipBackupService>();
 
     return services;

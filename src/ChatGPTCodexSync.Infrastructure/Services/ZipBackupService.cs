@@ -3,13 +3,16 @@ using ChatGPTCodexSync.Core.Options;
 using ChatGPTCodexSync.Core.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace ChatGPTCodexSync.Infrastructure.Services;
 
 internal sealed class ZipBackupService(
   IChatGptProcessDetector processDetector,
+  ISevenZipToolProvider sevenZipToolProvider,
   IOptions<CodexSyncOptions> options,
   ILogger<ZipBackupService> logger) : IBackupService
 {
@@ -30,21 +33,30 @@ internal sealed class ZipBackupService(
 
     Directory.CreateDirectory(request.BackupsDirectoryPath);
 
-    var manifest = CreateManifest(request);
-    var archivePath = CreateArchivePath(request.BackupsDirectoryPath, manifest);
-
     await WaitForDatabaseFilesAsync(request.CodexDirectoryPath, progress, cancellationToken);
+
+    var sevenZipTool = await sevenZipToolProvider.GetSevenZipAsync(request.OfflineMode, progress, cancellationToken);
+    var archiveFormat = sevenZipTool is null ? "zip" : "7z";
+    var manifest = CreateManifest(request, archiveFormat);
+    var archivePath = CreateArchivePath(request.BackupsDirectoryPath, manifest);
 
     progress.Report(new BackupProgress("Creating backup archive...", 0));
     logger.LogInformation("Creating backup archive {ArchivePath}", archivePath);
 
-    await Task.Run(() => CreateZipArchive(request, manifest, archivePath, progress, cancellationToken), cancellationToken);
+    if (sevenZipTool is null)
+    {
+      await Task.Run(() => CreateZipArchive(request, manifest, archivePath, progress, cancellationToken), cancellationToken);
+    }
+    else
+    {
+      await CreateSevenZipArchiveAsync(sevenZipTool, request, manifest, archivePath, progress, cancellationToken);
+    }
 
     progress.Report(new BackupProgress($"Backup completed: {archivePath}", 100));
     return new BackupResult(archivePath, manifest);
   }
 
-  private BackupManifest CreateManifest(BackupRequest request)
+  private static BackupManifest CreateManifest(BackupRequest request, string archiveFormat)
   {
     return new BackupManifest(
       "ChatGPTCodexSync",
@@ -54,7 +66,7 @@ internal sealed class ZipBackupService(
       Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
       request.CodexDirectoryPath,
       DateTimeOffset.Now,
-      "zip");
+      archiveFormat);
   }
 
   private static string CreateArchivePath(string backupsDirectoryPath, BackupManifest manifest)
@@ -62,9 +74,128 @@ internal sealed class ZipBackupService(
     var timestamp = manifest.CreatedAt.ToString("yyyyMMdd-HHmmss");
     var safeMachineName = SanitizeFileName(manifest.MachineName);
     var safeUserName = SanitizeFileName(manifest.UserName);
-    var fileName = $"chatgptcodexsync_{safeMachineName}_{safeUserName}_{timestamp}.zip";
+    var fileName = $"chatgptcodexsync_{safeMachineName}_{safeUserName}_{timestamp}.{manifest.ArchiveFormat}";
 
     return Path.Combine(backupsDirectoryPath, fileName);
+  }
+
+  private async Task CreateSevenZipArchiveAsync(
+    ArchiveTool sevenZipTool,
+    BackupRequest request,
+    BackupManifest manifest,
+    string archivePath,
+    IProgress<BackupProgress> progress,
+    CancellationToken cancellationToken)
+  {
+    var compressionSwitches = GetSevenZipCompressionSwitches(request.SevenZipCompressionMode);
+    var tempManifestDirectory = Path.Combine(
+      Path.GetTempPath(),
+      $"ChatGPTCodexSync-manifest-{Guid.NewGuid():N}");
+
+    Directory.CreateDirectory(tempManifestDirectory);
+
+    try
+    {
+      var manifestPath = Path.Combine(tempManifestDirectory, options.Value.ManifestFileName);
+      await File.WriteAllTextAsync(
+        manifestPath,
+        JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }),
+        cancellationToken);
+
+      progress.Report(new BackupProgress("Adding backup manifest to 7z archive...", 0));
+      await RunSevenZipAsync(
+        sevenZipTool.ExecutablePath,
+        tempManifestDirectory,
+        new[]
+        {
+          "a",
+          "-t7z",
+          archivePath,
+          options.Value.ManifestFileName
+        }.Concat(compressionSwitches).ToArray(),
+        null,
+        cancellationToken);
+
+      var codexParentDirectory = Directory.GetParent(request.CodexDirectoryPath)?.FullName
+        ?? throw new DirectoryNotFoundException($"Unable to locate parent directory for {request.CodexDirectoryPath}");
+      var codexDirectoryName = Path.GetFileName(request.CodexDirectoryPath);
+
+      progress.Report(new BackupProgress($"Adding .codex directory to 7z archive using {request.SevenZipCompressionMode} mode...", 5));
+      if (request.SevenZipCompressionMode == SevenZipCompressionMode.Maximum)
+      {
+        progress.Report(new BackupProgress("Maximum mode uses stronger compression and may take longer.", 5));
+      }
+
+      var lastReportedPercent = -1;
+      var highestSevenZipPercent = -1;
+      await RunSevenZipAsync(
+        sevenZipTool.ExecutablePath,
+        codexParentDirectory,
+        new[]
+        {
+          "a",
+          "-t7z",
+          "-bsp1",
+          archivePath,
+          $"{codexDirectoryName}\\*",
+          "-xr!*.lock"
+        }.Concat(compressionSwitches).ToArray(),
+        sevenZipPercent =>
+        {
+          if (sevenZipPercent < highestSevenZipPercent)
+          {
+            return;
+          }
+
+          highestSevenZipPercent = sevenZipPercent;
+          var mappedPercent = 5 + (int)Math.Round(sevenZipPercent * 0.95d);
+          if (mappedPercent != lastReportedPercent)
+          {
+            lastReportedPercent = mappedPercent;
+            progress.Report(new BackupProgress("Compressing with 7-Zip...", mappedPercent));
+          }
+        },
+        cancellationToken);
+
+      progress.Report(new BackupProgress("7z archive created.", 100));
+    }
+    finally
+    {
+      TryDeleteDirectory(tempManifestDirectory);
+    }
+  }
+
+  private static string[] GetSevenZipCompressionSwitches(SevenZipCompressionMode compressionMode)
+  {
+    return compressionMode switch
+    {
+      SevenZipCompressionMode.Fast =>
+      [
+        "-mx=0",
+        "-mmt=on",
+        "-ms=off",
+        "-y"
+      ],
+      SevenZipCompressionMode.Balanced =>
+      [
+        "-m0=LZMA2",
+        "-mx=1",
+        "-mmt=on",
+        "-md=32m",
+        "-ms=off",
+        "-y"
+      ],
+      SevenZipCompressionMode.Maximum =>
+      [
+        "-m0=LZMA2",
+        "-mx=7",
+        "-mmt=on",
+        "-md=64m",
+        "-ms=on",
+        "-y"
+      ],
+      _ => throw new ArgumentOutOfRangeException(nameof(compressionMode), compressionMode, null)
+    };
   }
 
   private void CreateZipArchive(
@@ -194,6 +325,99 @@ internal sealed class ZipBackupService(
     var extension = Path.GetExtension(filePath);
 
     return extension.Equals(".lock", StringComparison.OrdinalIgnoreCase);
+  }
+
+  private static async Task RunSevenZipAsync(
+    string executablePath,
+    string workingDirectory,
+    IReadOnlyList<string> arguments,
+    Action<int>? progressChanged,
+    CancellationToken cancellationToken)
+  {
+    var startInfo = new ProcessStartInfo
+    {
+      FileName = executablePath,
+      WorkingDirectory = workingDirectory,
+      RedirectStandardError = true,
+      RedirectStandardOutput = true,
+      UseShellExecute = false,
+      CreateNoWindow = true
+    };
+
+    foreach (var argument in arguments)
+    {
+      startInfo.ArgumentList.Add(argument);
+    }
+
+    using var process = Process.Start(startInfo)
+      ?? throw new InvalidOperationException($"Unable to start {executablePath}.");
+
+    var outputBuilder = new System.Text.StringBuilder();
+    var errorBuilder = new System.Text.StringBuilder();
+    var outputTask = ReadProcessOutputAsync(process.StandardOutput, outputBuilder, progressChanged, cancellationToken);
+    var errorTask = ReadProcessOutputAsync(process.StandardError, errorBuilder, progressChanged, cancellationToken);
+
+    await process.WaitForExitAsync(cancellationToken);
+    await Task.WhenAll(outputTask, errorTask);
+
+    if (process.ExitCode != 0)
+    {
+      throw new InvalidOperationException($"7-Zip failed with exit code {process.ExitCode}.{Environment.NewLine}{outputBuilder}{Environment.NewLine}{errorBuilder}");
+    }
+  }
+
+  private static async Task ReadProcessOutputAsync(
+    TextReader reader,
+    System.Text.StringBuilder outputBuilder,
+    Action<int>? progressChanged,
+    CancellationToken cancellationToken)
+  {
+    var buffer = new char[512];
+    while (true)
+    {
+      var read = await reader.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+      if (read == 0)
+      {
+        return;
+      }
+
+      var chunk = new string(buffer, 0, read);
+      outputBuilder.Append(chunk);
+      ReportSevenZipProgress(chunk, progressChanged);
+    }
+  }
+
+  private static void ReportSevenZipProgress(string outputChunk, Action<int>? progressChanged)
+  {
+    if (progressChanged is null)
+    {
+      return;
+    }
+
+    foreach (Match match in Regex.Matches(outputChunk, @"(?<!\d)(\d{1,3})%"))
+    {
+      if (int.TryParse(match.Groups[1].Value, out var percent))
+      {
+        progressChanged(Math.Clamp(percent, 0, 100));
+      }
+    }
+  }
+
+  private static void TryDeleteDirectory(string directoryPath)
+  {
+    try
+    {
+      if (Directory.Exists(directoryPath))
+      {
+        Directory.Delete(directoryPath, true);
+      }
+    }
+    catch (IOException)
+    {
+    }
+    catch (UnauthorizedAccessException)
+    {
+    }
   }
 
   private static string SanitizeFileName(string value)

@@ -18,6 +18,9 @@ public sealed class MainWindowViewModel : ViewModelBase
   private bool _isBackupRunning;
   private double _progressValue;
   private string _progressText;
+  private string? _lastLogMessage;
+  private SevenZipCompressionMode _selectedCompressionMode = SevenZipCompressionMode.Fast;
+  private bool _offlineMode;
   private string _statusMessage;
   private string _codexDirectoryPath;
   private string _logText;
@@ -52,6 +55,25 @@ public sealed class MainWindowViewModel : ViewModelBase
 
   public ICommand CreateBackupCommand { get; }
 
+  public IReadOnlyList<SevenZipCompressionMode> CompressionModes { get; } =
+  [
+    SevenZipCompressionMode.Fast,
+    SevenZipCompressionMode.Balanced,
+    SevenZipCompressionMode.Maximum
+  ];
+
+  public SevenZipCompressionMode SelectedCompressionMode
+  {
+    get => _selectedCompressionMode;
+    set => SetProperty(ref _selectedCompressionMode, value);
+  }
+
+  public bool OfflineMode
+  {
+    get => _offlineMode;
+    set => SetProperty(ref _offlineMode, value);
+  }
+
   public double ProgressValue
   {
     get => _progressValue;
@@ -67,8 +89,16 @@ public sealed class MainWindowViewModel : ViewModelBase
   public bool IsBackupRunning
   {
     get => _isBackupRunning;
-    private set => SetProperty(ref _isBackupRunning, value);
+    private set
+    {
+      if (SetProperty(ref _isBackupRunning, value))
+      {
+        OnPropertyChanged(nameof(CanConfigureBackup));
+      }
+    }
   }
+
+  public bool CanConfigureBackup => !IsBackupRunning;
 
   public string ProgressText
   {
@@ -95,13 +125,19 @@ public sealed class MainWindowViewModel : ViewModelBase
       IsBackupRunning = true;
       ProgressValue = 0;
       _log.Clear();
+      _lastLogMessage = null;
       AppendLog("Starting backup...");
       StatusMessage = "Backup in progress...";
 
       var profile = _codexProfileLocator.GetCurrentProfile();
       var appDirectory = AppContext.BaseDirectory;
       var backupsDirectory = Path.Combine(appDirectory, "Backups");
-      var request = new BackupRequest(profile.CodexDirectoryPath, backupsDirectory, GetApplicationVersion());
+      var request = new BackupRequest(
+        profile.CodexDirectoryPath,
+        backupsDirectory,
+        GetApplicationVersion(),
+        SelectedCompressionMode,
+        OfflineMode);
 
       var progress = new Progress<BackupProgress>(backupProgress =>
       {
@@ -132,6 +168,12 @@ public sealed class MainWindowViewModel : ViewModelBase
 
   private void AppendLog(string message)
   {
+    if (string.Equals(_lastLogMessage, message, StringComparison.Ordinal))
+    {
+      return;
+    }
+
+    _lastLogMessage = message;
     _log.AppendLine($"[{DateTime.Now:HH:mm:ss}] {message}");
     LogText = _log.ToString();
   }
