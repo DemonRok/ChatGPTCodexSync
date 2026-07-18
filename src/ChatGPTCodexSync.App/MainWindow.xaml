@@ -76,7 +76,7 @@
                                  Grid.ColumnSpan="2"
                                  Height="4"
                                  Margin="0,8,0,0"
-                                 IsIndeterminate="{Binding IsBackupRunning, Mode=OneWay}" />
+                                 IsIndeterminate="{Binding IsOperationRunning, Mode=OneWay}" />
                 </Grid>
             </Grid>
         </Border>
@@ -91,19 +91,21 @@
                       Margin="0,0,14,0"
                       ItemsSource="{Binding CompressionModes}"
                       SelectedItem="{Binding SelectedCompressionMode}"
-                      IsEnabled="{Binding CanConfigureBackup}" />
+                      IsEnabled="{Binding CanConfigureActions}" />
             <CheckBox Content="Offline mode"
                       VerticalAlignment="Center"
                       Margin="0,0,14,0"
                       IsChecked="{Binding OfflineMode}"
-                      IsEnabled="{Binding CanConfigureBackup}" />
+                      IsEnabled="{Binding CanConfigureActions}" />
             <Button Content="Backup"
                     MinWidth="110"
                     Margin="0,0,10,0"
+                    IsEnabled="{Binding CanConfigureActions}"
                     Command="{Binding CreateBackupCommand}" />
             <Button Content="Restore"
                     MinWidth="110"
-                    IsEnabled="False" />
+                    IsEnabled="{Binding CanConfigureActions}"
+                    Command="{Binding RestoreCommand}" />
         </StackPanel>
     </Grid>
 </Window>

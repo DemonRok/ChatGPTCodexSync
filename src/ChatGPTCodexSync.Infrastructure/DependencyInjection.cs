@@ -17,6 +17,7 @@ public static class DependencyInjection
     services.AddSingleton<IChatGptProcessDetector, ChatGptProcessDetector>();
     services.AddSingleton<ISevenZipToolProvider, SevenZipToolProvider>();
     services.AddSingleton<IBackupService, ZipBackupService>();
+    services.AddSingleton<IRestoreService, ArchiveRestoreService>();
 
     return services;
   }

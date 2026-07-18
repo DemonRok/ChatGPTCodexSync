@@ -6,7 +6,7 @@ The application is designed to run from a folder synchronized by tools such as N
 
 ## Current Phase
 
-The project is currently in the backup implementation phase.
+The project is currently in the restore foundation phase.
 
 Completed so far:
 
@@ -19,17 +19,19 @@ Completed so far:
 - ZIP fallback support.
 - Portable 7-Zip support with automatic tool preparation.
 - Fast, Balanced, and Maximum 7-Zip compression profiles aligned with the proven `SaveCodex.cmd` style.
+- Initial safe restore workflow for ZIP and 7z backups.
+- Backup manifest validation during restore.
+- Temporary extraction before touching the current profile.
+- Safety backup creation before replacing the current `.codex` directory.
 - Real-time log output, progress percentage, and auto-scrolling log view.
 - GitHub Actions workflow for Windows x64 release builds.
 - Initial automated tests.
 
 ## Remaining Phases
 
-- Complete restore workflow.
-- Read and validate the backup manifest during restore.
-- Detect the source Windows profile from the backup.
+- Add restore rollback improvements for more edge cases.
+- Detect the source Windows profile from the backup manifest.
 - Compare the source profile with the current Windows profile.
-- Create safety backups before modifying restored files.
 - Dynamically scan SQLite databases.
 - Detect SQLite tables and text columns automatically.
 - Replace absolute Windows profile paths inside SQLite text values.

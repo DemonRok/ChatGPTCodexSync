@@ -45,7 +45,7 @@ public partial class App : Application
     {
       MessageBox.Show(
         GetExceptionDetails(exception),
-        "Errore avvio ChatGPTCodexSync",
+        "ChatGPTCodexSync startup error",
         MessageBoxButton.OK,
         MessageBoxImage.Error);
 

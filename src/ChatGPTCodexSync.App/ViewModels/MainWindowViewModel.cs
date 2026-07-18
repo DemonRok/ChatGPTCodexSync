@@ -1,6 +1,8 @@
 using ChatGPTCodexSync.Core.Backup;
+using ChatGPTCodexSync.Core.Restore;
 using ChatGPTCodexSync.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Win32;
 using System.IO;
 using System.Reflection;
 using System.Text;
@@ -13,9 +15,10 @@ public sealed class MainWindowViewModel : ViewModelBase
   private readonly ILogger<MainWindowViewModel> _logger;
   private readonly string _windowTitle;
   private readonly IBackupService _backupService;
+  private readonly IRestoreService _restoreService;
   private readonly ICodexProfileLocator _codexProfileLocator;
   private readonly StringBuilder _log = new();
-  private bool _isBackupRunning;
+  private bool _isOperationRunning;
   private double _progressValue;
   private string _progressText;
   private string? _lastLogMessage;
@@ -28,10 +31,12 @@ public sealed class MainWindowViewModel : ViewModelBase
   public MainWindowViewModel(
     ICodexProfileLocator codexProfileLocator,
     IBackupService backupService,
+    IRestoreService restoreService,
     ILogger<MainWindowViewModel> logger)
   {
     _logger = logger;
     _backupService = backupService;
+    _restoreService = restoreService;
     _codexProfileLocator = codexProfileLocator;
 
     var currentProfile = codexProfileLocator.GetCurrentProfile();
@@ -41,6 +46,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     _progressText = "0%";
     _logText = "Backup and restore logs will appear here.";
     CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync);
+    RestoreCommand = new AsyncRelayCommand(RestoreAsync);
 
     _logger.LogInformation("Current Codex profile located: {CodexDirectoryPath}", _codexDirectoryPath);
   }
@@ -54,6 +60,8 @@ public sealed class MainWindowViewModel : ViewModelBase
   public string WindowTitle => _windowTitle;
 
   public ICommand CreateBackupCommand { get; }
+
+  public ICommand RestoreCommand { get; }
 
   public IReadOnlyList<SevenZipCompressionMode> CompressionModes { get; } =
   [
@@ -86,19 +94,19 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
   }
 
-  public bool IsBackupRunning
+  public bool IsOperationRunning
   {
-    get => _isBackupRunning;
+    get => _isOperationRunning;
     private set
     {
-      if (SetProperty(ref _isBackupRunning, value))
+      if (SetProperty(ref _isOperationRunning, value))
       {
-        OnPropertyChanged(nameof(CanConfigureBackup));
+        OnPropertyChanged(nameof(CanConfigureActions));
       }
     }
   }
 
-  public bool CanConfigureBackup => !IsBackupRunning;
+  public bool CanConfigureActions => !IsOperationRunning;
 
   public string ProgressText
   {
@@ -122,10 +130,7 @@ public sealed class MainWindowViewModel : ViewModelBase
   {
     try
     {
-      IsBackupRunning = true;
-      ProgressValue = 0;
-      _log.Clear();
-      _lastLogMessage = null;
+      StartOperation();
       AppendLog("Starting backup...");
       StatusMessage = "Backup in progress...";
 
@@ -162,8 +167,77 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
     finally
     {
-      IsBackupRunning = false;
+      IsOperationRunning = false;
     }
+  }
+
+  private async Task RestoreAsync(CancellationToken cancellationToken)
+  {
+    var dialog = new OpenFileDialog
+    {
+      Title = "Select ChatGPTCodexSync backup",
+      Filter = "ChatGPTCodexSync backups (*.7z;*.zip)|*.7z;*.zip|7-Zip archives (*.7z)|*.7z|ZIP archives (*.zip)|*.zip|All files (*.*)|*.*",
+      CheckFileExists = true,
+      Multiselect = false
+    };
+
+    if (dialog.ShowDialog() != true)
+    {
+      return;
+    }
+
+    try
+    {
+      StartOperation();
+      AppendLog("Starting restore...");
+      StatusMessage = "Restore in progress...";
+
+      var profile = _codexProfileLocator.GetCurrentProfile();
+      var safetyBackupsDirectory = Path.Combine(AppContext.BaseDirectory, "SafetyBackups");
+      var request = new RestoreRequest(
+        dialog.FileName,
+        profile.CodexDirectoryPath,
+        safetyBackupsDirectory,
+        OfflineMode);
+
+      var progress = new Progress<BackupProgress>(restoreProgress =>
+      {
+        AppendLog(restoreProgress.Message);
+
+        if (restoreProgress.Percent.HasValue)
+        {
+          ProgressValue = restoreProgress.Percent.Value;
+        }
+      });
+
+      var result = await _restoreService.RestoreAsync(request, progress, cancellationToken);
+      ProgressValue = 100;
+      StatusMessage = "Restore completed.";
+      AppendLog($"Restored profile: {result.RestoredCodexDirectoryPath}");
+
+      if (!string.IsNullOrWhiteSpace(result.SafetyBackupDirectoryPath))
+      {
+        AppendLog($"Safety backup: {result.SafetyBackupDirectoryPath}");
+      }
+    }
+    catch (Exception exception)
+    {
+      StatusMessage = "Restore failed.";
+      AppendLog(exception.Message);
+      _logger.LogError(exception, "Restore failed");
+    }
+    finally
+    {
+      IsOperationRunning = false;
+    }
+  }
+
+  private void StartOperation()
+  {
+    IsOperationRunning = true;
+    ProgressValue = 0;
+    _log.Clear();
+    _lastLogMessage = null;
   }
 
   private void AppendLog(string message)
