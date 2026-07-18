@@ -52,12 +52,32 @@
                          TextChanged="LogTextBoxTextChanged"
                          Text="{Binding LogText, Mode=OneWay}" />
 
-                <ProgressBar Grid.Row="2"
-                             Height="8"
-                             IsIndeterminate="False"
-                             Minimum="0"
-                             Maximum="100"
-                             Value="{Binding ProgressValue, Mode=OneWay}" />
+                <Grid Grid.Row="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <ProgressBar Height="8"
+                                 Minimum="0"
+                                 Maximum="100"
+                                 Value="{Binding ProgressValue, Mode=OneWay}" />
+                    <TextBlock Grid.Column="1"
+                               MinWidth="52"
+                               Margin="12,0,0,0"
+                               VerticalAlignment="Center"
+                               TextAlignment="Right"
+                               Text="{Binding ProgressText, Mode=OneWay}" />
+                    <ProgressBar Grid.Row="1"
+                                 Grid.ColumnSpan="2"
+                                 Height="4"
+                                 Margin="0,8,0,0"
+                                 IsIndeterminate="{Binding IsBackupRunning, Mode=OneWay}" />
+                </Grid>
             </Grid>
         </Border>
 

@@ -15,7 +15,9 @@ public sealed class MainWindowViewModel : ViewModelBase
   private readonly IBackupService _backupService;
   private readonly ICodexProfileLocator _codexProfileLocator;
   private readonly StringBuilder _log = new();
+  private bool _isBackupRunning;
   private double _progressValue;
+  private string _progressText;
   private string _statusMessage;
   private string _codexDirectoryPath;
   private string _logText;
@@ -33,6 +35,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     _codexDirectoryPath = currentProfile.CodexDirectoryPath;
     _windowTitle = $"ChatGPTCodexSync ver. {GetApplicationVersion()}";
     _statusMessage = "Ready to create a backup.";
+    _progressText = "0%";
     _logText = "Backup and restore logs will appear here.";
     CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync);
 
@@ -52,7 +55,25 @@ public sealed class MainWindowViewModel : ViewModelBase
   public double ProgressValue
   {
     get => _progressValue;
-    private set => SetProperty(ref _progressValue, value);
+    private set
+    {
+      if (SetProperty(ref _progressValue, value))
+      {
+        ProgressText = $"{Math.Clamp((int)Math.Round(value), 0, 100)}%";
+      }
+    }
+  }
+
+  public bool IsBackupRunning
+  {
+    get => _isBackupRunning;
+    private set => SetProperty(ref _isBackupRunning, value);
+  }
+
+  public string ProgressText
+  {
+    get => _progressText;
+    private set => SetProperty(ref _progressText, value);
   }
 
   public string StatusMessage
@@ -71,6 +92,7 @@ public sealed class MainWindowViewModel : ViewModelBase
   {
     try
     {
+      IsBackupRunning = true;
       ProgressValue = 0;
       _log.Clear();
       AppendLog("Starting backup...");
@@ -92,6 +114,7 @@ public sealed class MainWindowViewModel : ViewModelBase
       });
 
       var result = await _backupService.CreateBackupAsync(request, progress, cancellationToken);
+      ProgressValue = 100;
       StatusMessage = "Backup completed.";
       AppendLog($"Archive: {result.ArchivePath}");
     }
@@ -100,6 +123,10 @@ public sealed class MainWindowViewModel : ViewModelBase
       StatusMessage = "Backup failed.";
       AppendLog(exception.Message);
       _logger.LogError(exception, "Backup failed");
+    }
+    finally
+    {
+      IsBackupRunning = false;
     }
   }
 
